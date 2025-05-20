@@ -28,10 +28,25 @@
     const apiUrl = 'https://biketracker.onrender.com/gps';
 
     async function loadGPS() {
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      document.getElementById('gps-display').textContent = JSON.stringify(data, null, 2);
-      updateMap(data.lat, data.lon);
+      try {
+        const res = await fetch(apiUrl);
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        const data = await res.json();
+        document.getElementById('gps-display').textContent = JSON.stringify(data, null, 2);
+        // Ensure lat and lon are numbers before updating map
+        if (data && typeof data.lat === 'number' && typeof data.lon === 'number') {
+          updateMap(data.lat, data.lon);
+        } else {
+          console.warn("Received invalid or incomplete GPS data:", data);
+          // Optionally, set map to a default view or show an error message
+          // updateMap(0, 0, 2); // Example: reset to world view
+        }
+      } catch (error) {
+        console.error("Failed to load GPS data:", error);
+        document.getElementById('gps-display').textContent = "Error loading GPS data.";
+      }
     }
 
     document.getElementById('gps-form').addEventListener('submit', async (e) => {
@@ -39,25 +54,50 @@
       const lat = parseFloat(document.getElementById('lat').value);
       const lon = parseFloat(document.getElementById('lon').value);
 
-      await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lon })
-      });
+      if (isNaN(lat) || isNaN(lon)) {
+        alert("Please enter valid numbers for latitude and longitude.");
+        return;
+      }
 
-      await loadGPS();
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lon })
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        await loadGPS(); // Reload and display the new data
+      } catch (error) {
+        console.error("Failed to update GPS data:", error);
+        alert("Error updating coordinates. Please try again.");
+      }
     });
 
-    let map = L.map('map').setView([0, 0], 2);
+    // Initialize map
+    let map = L.map('map').setView([0, 0], 2); // Initial view (e.g., world view)
+
+    // --- FIX: ADD TILE LAYER ---
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    // --- END FIX ---
+
+    // Initialize marker (can be at 0,0 initially or wait for first GPS load)
     let marker = L.marker([0, 0]).addTo(map);
 
     function updateMap(lat, lon) {
-      if (lat !== null && lon !== null) {
-        map.setView([lat, lon], 13);
+      // Ensure lat and lon are valid numbers
+      if (typeof lat === 'number' && typeof lon === 'number' && !isNaN(lat) && !isNaN(lon)) {
+        map.setView([lat, lon], 13); // Zoom level 13 is a common detail view
         marker.setLatLng([lat, lon]);
+      } else {
+        console.warn("updateMap called with invalid coordinates:", lat, lon);
       }
     }
 
+    // Initial load of GPS data when the page loads
     loadGPS();
   </script>
 </body>
